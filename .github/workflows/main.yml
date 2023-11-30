@@ -3,6 +3,7 @@ name: PR Verification Workflow
 permissions:
   issues: write
   pull-requests: write
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -20,38 +21,19 @@ jobs:
           #!/bin/bash
           set -e
 
-          # Function to check file content
-          function check_file_content() {
-            if [ ! -s "$1" ]; then
-              echo "File $1 is empty"
-              echo "::set-output name=valid::false"
-              return 1
-            fi
-          }
-
           VALID=true
           EXPECTED_PATH_PATTERN="^.*_book_app/add_book_features/(create_book\.txt|list_all_books\.txt)$"
 
-          # Loop through all files in the PR
           for file in $(git diff --name-only origin/main...HEAD); do
             echo "Checking $file"
 
-            # Check if the file path matches the expected pattern
-            if [[ ! $file =~ $EXPECTED_PATH_PATTERN ]]; then
-              echo "Invalid file path for $file"
+            if [[ ! $file =~ $EXPECTED_PATH_PATTERN ]] || [ ! -s "$file" ]; then
+              echo "Invalid file path or empty file: $file"
               VALID=false
-              break
             fi
-
-            # Check file content
-            check_file_content "$file" || VALID=false
           done
 
-          if [ "$VALID" = true ]; then
-            echo "::set-output name=valid::true"
-          else
-            echo "::set-output name=valid::false"
-          fi
+          echo "::set-output name=valid::$VALID"
 
       - name: Label PR
         if: always()
@@ -61,11 +43,12 @@ jobs:
           script: |
             const isValid = ${{ steps.verify_files.outputs.valid }};
             const prNumber = context.payload.pull_request.number;
-            const labels = isValid ? ['valid'] : ['invalid'];
+            const label = isValid === 'true' ? 'valid' : 'invalid';
 
             github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
-              labels: labels
+              labels: [label]
             });
+
